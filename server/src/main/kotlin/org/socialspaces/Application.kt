@@ -222,6 +222,68 @@ fun Application.module() {
             call.respond(ApiResponse(success = true, data = config))
         }
 
+        // Add this to your existing routing block in module()
+
+        post("/action") {
+            try {
+                val actionRequest = call.receive<ActionRequest>()
+                logger.info("Received action request: ${actionRequest.action}")
+
+                // Get session ID from header (if you're using session management)
+                val sessionId = call.request.header("X-Session-ID")
+
+                // Construct the prompt for the action
+                val prompt = """
+            Continue the adventure based on the player's action:
+            "${actionRequest.action}"
+            
+            Guidelines:
+            1. Describe the result of the action vividly but concisely
+            2. Include relevant consequences and changes to the environment
+            3. Present 2-3 new possible actions based on the new situation
+            4. Keep descriptions atmospheric and engaging
+            5. End with "What would you like to do?"
+            
+            Limit the response to 250 words.
+        """.trimIndent()
+
+                val ollamaRequest = OllamaRequest(
+                    model = config.ollamaModel,
+                    prompt = prompt,
+                    stream = false
+                )
+
+                val response = client.post("http://localhost:11434/api/generate") {
+                    contentType(ContentType.Application.Json)
+                    setBody(json.encodeToString(OllamaRequest.serializer(), ollamaRequest))
+                }
+
+                val ollamaResponseText = response.bodyAsText()
+                logger.info("Ollama API Raw Response: $ollamaResponseText")
+
+                // Parse the response and extract just the content
+                val combinedResponse = ollamaResponseText
+                    .split("\n")
+                    .mapNotNull { line ->
+                        try {
+                            json.decodeFromString<OllamaResponse>(line).response
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                    .joinToString("")
+
+                call.respond(ApiResponse(success = true, data = combinedResponse))
+
+            } catch (e: Exception) {
+                logger.error("Error in /action", e)
+                call.respond(
+                    HttpStatusCode.InternalServerError,
+                    ApiResponse<String>(success = false, error = e.message ?: "Unknown error")
+                )
+            }
+        }
+
         get("/placeholder/{width}/{height}") {
             try {
                 val width = call.parameters["width"]?.toIntOrNull() ?: 400
