@@ -2,6 +2,7 @@ package org.socialspaces
 
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.sse.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
@@ -18,6 +19,15 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
+import io.ktor.server.response.*
+import io.ktor.server.response.respondTextWriter
+import io.ktor.http.CacheControl
+import io.ktor.http.ContentType
+import io.ktor.utils.io.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
+import io.ktor.server.response.respondTextWriter
 
 @Serializable
 data class OllamaRequest(
@@ -284,6 +294,105 @@ fun Application.module() {
             }
         }
 
+        post("/stream-adventure") {
+            try {
+                val settings = call.receive<AdventureSettings>()
+                logger.info("Starting streaming adventure with settings: $settings")
+
+                val prompt = generateAdventurePrompt(settings)
+                val ollamaRequest = OllamaRequest(
+                    model = config.ollamaModel,
+                    prompt = prompt,
+                    stream = true  // Enable streaming
+                )
+
+                call.response.cacheControl(CacheControl.NoCache(null))
+
+                call.response.cacheControl(CacheControl.NoCache(null))
+                call.respondTextWriter(contentType = ContentType.Text.EventStream) {
+                    write("retry: 1000\n")  // Reconnection time in milliseconds
+                    val response = client.post("http://localhost:11434/api/generate") {
+                        contentType(ContentType.Application.Json)
+                        setBody(json.encodeToString(OllamaRequest.serializer(), ollamaRequest))
+                    }
+
+                    val channel = response.bodyAsChannel()
+                    while (!channel.isClosedForRead) {
+                        val line = channel.readUTF8Line() ?: break
+                        try {
+                            val ollamaResponse = json.decodeFromString<OllamaResponse>(line)
+                            write("event: ${if (ollamaResponse.done) "done" else "message"}\n")
+                            write("data: ${ollamaResponse.response}\n\n")
+                            flush()
+                        } catch (e: Exception) {
+                            logger.error("Error parsing streaming response", e)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error("Error in /stream-adventure", e)
+                call.respond(
+                    HttpStatusCode.InternalServerError,
+                    ApiResponse<String>(success = false, error = e.message ?: "Unknown error")
+                )
+            }
+        }
+
+        post("/stream-action") {
+            try {
+                val actionRequest = call.receive<ActionRequest>()
+                logger.info("Received streaming action request: ${actionRequest.action}")
+
+                val prompt = """
+                    Continue the adventure based on the player's action:
+                    "${actionRequest.action}"
+                    
+                    Guidelines:
+                    1. Describe the result of the action vividly but concisely
+                    2. Include relevant consequences and changes to the environment
+                    3. Present 2-3 new possible actions based on the new situation
+                    4. Keep descriptions atmospheric and engaging
+                    5. End with "What would you like to do?"
+                    
+                    Limit the response to 250 words.
+                """.trimIndent()
+
+                val ollamaRequest = OllamaRequest(
+                    model = config.ollamaModel,
+                    prompt = prompt,
+                    stream = true
+                )
+
+                call.response.cacheControl(CacheControl.NoCache(null))
+
+                call.response.cacheControl(CacheControl.NoCache(null))
+                call.respondTextWriter(contentType = ContentType.Text.EventStream) {
+                    val response = client.post("http://localhost:11434/api/generate") {
+                        contentType(ContentType.Application.Json)
+                        setBody(json.encodeToString(OllamaRequest.serializer(), ollamaRequest))
+                    }
+
+                    val channel = response.bodyAsChannel()
+                    while (!channel.isClosedForRead) {
+                        val line = channel.readUTF8Line() ?: break
+                        try {
+                            val ollamaResponse = json.decodeFromString<OllamaResponse>(line)
+                            write("event: ${if (ollamaResponse.done) "done" else "message"}\n")
+                            write("data: ${ollamaResponse.response}\n\n")
+                            flush()
+                        } catch (e: Exception) {
+                            logger.error("Error parsing streaming response", e)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error("Error in /stream-action", e)
+                call.respond(
+                    HttpStatusCode.InternalServerError,
+                    ApiResponse<String>(success = false, error = e.message ?: "Unknown error")
+                )
+            }
+        }
         get("/placeholder/{width}/{height}") {
             try {
                 val width = call.parameters["width"]?.toIntOrNull() ?: 400

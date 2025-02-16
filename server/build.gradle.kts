@@ -24,6 +24,7 @@ dependencies {
     implementation("io.ktor:ktor-server-cors:${libs.versions.ktor.get()}")
     implementation("io.ktor:ktor-server-content-negotiation:${libs.versions.ktor.get()}")
     implementation("io.ktor:ktor-serialization-kotlinx-json:${libs.versions.ktor.get()}")
+    implementation("io.ktor:ktor-server-sse:${libs.versions.ktor.get()}")
 
     // Fix the test dependency
     testImplementation(libs.ktor.server.test.host)  // Changed from ktor.server.tests
