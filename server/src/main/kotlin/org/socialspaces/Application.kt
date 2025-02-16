@@ -16,7 +16,6 @@ import io.ktor.server.routing.*
 import io.ktor.server.plugins.contentnegotiation.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import org.socialspaces.Greeting
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 
@@ -46,6 +45,12 @@ data class ApiResponse<T>(
     val success: Boolean,
     val data: T? = null,
     val error: String? = null
+)
+
+// Add this configuration class at the top level
+@Serializable
+data class ApplicationConfig(
+    val ollamaModel: String = "deepseek-r1:14b" // Default model
 )
 
 @Serializable
@@ -100,6 +105,11 @@ fun main() {
 }
 
 fun Application.module() {
+    // Initialize config from environment variable or use default
+    val config = ApplicationConfig(
+        ollamaModel = System.getenv("OLLAMA_MODEL") ?: "deepseek-r1:14b"
+    )
+
     // Store active sessions
     val sessions = ConcurrentHashMap<String, String>()
     val client = HttpClient(CIO) {
@@ -171,7 +181,7 @@ fun Application.module() {
 
                 val prompt = generateAdventurePrompt(settings)
                 val ollamaRequest = OllamaRequest(
-                    model = "deepseek-r1:14b",
+                    model = config.ollamaModel, // Use the configured model
                     prompt = prompt,
                     stream = false  // Explicitly set to false
                 )
@@ -207,48 +217,10 @@ fun Application.module() {
             }
         }
 
-
-        post("/start-adventure2") {
-            try {
-                val settings = call.receive<AdventureSettings>()
-                logger.info("Starting adventure with settings: $settings")
-
-                val prompt = generateAdventurePrompt(settings)
-                val ollamaRequest = OllamaRequest(
-                    model = "deepseek-r1",
-                    prompt = prompt,
-                    stream = false
-                )
-
-                val response = client.post("http://localhost:11434/api/generate") {
-                    contentType(ContentType.Application.Json)
-                    setBody(json.encodeToString(OllamaRequest.serializer(), ollamaRequest))
-                }
-
-                val ollamaResponseText = response.bodyAsText()  // Get the raw response text
-                logger.info("Ollama API Response: $ollamaResponseText")  // Log the raw response
-
-                // Try to decode the response into the expected object
-                try {
-                    val ollamaResponse = json.decodeFromString<OllamaResponse>(ollamaResponseText)
-                    call.respond(ApiResponse(success = true, data = ollamaResponse.response))
-                } catch (jsonException: Exception) {
-                    // If decoding fails, log the issue and return the raw response text
-                    logger.error("Error decoding response: ${jsonException.message}")
-                    call.respond(
-                        HttpStatusCode.InternalServerError,
-                        ApiResponse<String>(success = false, error = "Error parsing response from Ollama API: $ollamaResponseText")
-                    )
-                }
-            } catch (e: Exception) {
-                logger.error("Error in /start-adventure", e)
-                call.respond(
-                    HttpStatusCode.InternalServerError,
-                    ApiResponse<String>(success = false, error = e.message ?: "Unknown error")
-                )
-            }
+        // Add a new endpoint to check current configuration
+        get("/config") {
+            call.respond(ApiResponse(success = true, data = config))
         }
-
 
         get("/placeholder/{width}/{height}") {
             try {

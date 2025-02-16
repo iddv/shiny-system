@@ -29,10 +29,17 @@ A Kotlin-based backend service using Ktor and Ollama for AI-powered text adventu
    ```
 
 3. Ollama
+   Install a model:
    ```bash
    # Install from https://ollama.ai/
    # Pull required model
    ollama pull deepseek-r1:14b
+   ```
+
+   By default, `deepseek-r1:14b` will be used. Use ENV `OLLAMA_MODEL` to change it
+   ```bash
+   export OLLAMA_MODEL="mistral:latest"
+   ./gradlew run
    ```
 
 ### Installation & Setup
