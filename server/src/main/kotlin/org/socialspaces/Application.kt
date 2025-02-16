@@ -1,3 +1,5 @@
+package org.socialspaces
+
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.request.*
@@ -169,7 +171,7 @@ fun Application.module() {
 
                 val prompt = generateAdventurePrompt(settings)
                 val ollamaRequest = OllamaRequest(
-                    model = "deepseek-r1",
+                    model = "deepseek-r1:14b",
                     prompt = prompt,
                     stream = false  // Explicitly set to false
                 )
