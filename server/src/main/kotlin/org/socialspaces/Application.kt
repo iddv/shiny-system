@@ -184,30 +184,20 @@ fun Application.module() {
                 val ollamaResponseText = response.bodyAsText()
                 logger.info("Ollama API Raw Response: $ollamaResponseText")
 
-                // Split the response by lines and process
+                // Parse the response and extract just the content
+                val combinedResponse = ollamaResponseText
+                    .split("\n")
+                    .mapNotNull { line ->
+                        try {
+                            json.decodeFromString<OllamaResponse>(line).response
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                    .joinToString("")
 
-//                // Find the last complete JSON object (or the one with the most complete response)
-//                val lastCompleteResponse = responseLines
-//                    .mapNotNull { line ->
-//                        try {
-//                            json.decodeFromString<OllamaResponse>(line)
-//                        } catch (e: Exception) {
-//                            null
-//                        }
-//                    }
-//                    .lastOrNull { it.response.isNotBlank() }
+                call.respond(ApiResponse(success = true, data = combinedResponse))
 
-//                if (lastCompleteResponse != null) {
-//                    // logger.info("Error in /start-adventure")
-                    call.respond(ApiResponse(success = true, data = ollamaResponseText))
-//                } else {
-//                    // Fallback if no valid response found
-//                    logger.error("No valid response found in Ollama API output")
-//                    call.respond(
-//                        HttpStatusCode.InternalServerError,
-//                        ApiResponse<String>(success = false, error = "Unable to parse Ollama API response")
-//                    )
-//                }
             } catch (e: Exception) {
                 logger.error("Error in /start-adventure", e)
                 call.respond(
