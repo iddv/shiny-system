@@ -140,6 +140,10 @@ fun Application.module() {
         allowHeader(HttpHeaders.ContentType)
         allowHeader(HttpHeaders.AccessControlAllowOrigin)
         allowHeader("X-Session-ID")
+        allowHeader(HttpHeaders.CacheControl)
+        allowHeader(HttpHeaders.ContentType)
+        exposeHeader(HttpHeaders.ContentType)
+        exposeHeader("X-Session-ID")
         anyHost()
     }
 
@@ -294,39 +298,80 @@ fun Application.module() {
             }
         }
 
-        post("/stream-adventure") {
+        get("/stream-adventure") {
+            logger.info("Streaming adventure invoked")
             try {
-                val settings = call.receive<AdventureSettings>()
+                val sessionId = call.request.header("X-Session-ID")
+                val settings = if (sessionId != null) {
+                    sessions[sessionId]?.let { json.decodeFromString<AdventureSettings>(it) }
+                } else {
+                    AdventureSettings()
+                } ?: AdventureSettings()
+
                 logger.info("Starting streaming adventure with settings: $settings")
 
                 val prompt = generateAdventurePrompt(settings)
                 val ollamaRequest = OllamaRequest(
                     model = config.ollamaModel,
                     prompt = prompt,
-                    stream = true  // Enable streaming
+                    stream = true
                 )
 
-                call.response.cacheControl(CacheControl.NoCache(null))
+                // Set required headers for SSE
+                call.response.headers.append(HttpHeaders.ContentType, ContentType.Text.EventStream.toString())
+                call.response.headers.append(HttpHeaders.CacheControl, "no-cache")
+                call.response.headers.append(HttpHeaders.Connection, "keep-alive")
+                call.response.headers.append("X-Accel-Buffering", "no")
+                call.response.headers.append("Access-Control-Allow-Origin", "*") // Or your specific origin
+                call.response.headers.append("Access-Control-Allow-Credentials", "true")
+                call.response.headers.append("Access-Control-Allow-Headers", "X-Session-ID")
 
-                call.response.cacheControl(CacheControl.NoCache(null))
+
+                // Create channel for streaming
+                val channel = Channel<String>()
+
                 call.respondTextWriter(contentType = ContentType.Text.EventStream) {
-                    write("retry: 1000\n")  // Reconnection time in milliseconds
-                    val response = client.post("http://localhost:11434/api/generate") {
-                        contentType(ContentType.Application.Json)
-                        setBody(json.encodeToString(OllamaRequest.serializer(), ollamaRequest))
-                    }
+                    write("event: connected\n")
+                    write("data: {\"status\":\"connected\"}\n\n")
+                    flush()
 
-                    val channel = response.bodyAsChannel()
-                    while (!channel.isClosedForRead) {
-                        val line = channel.readUTF8Line() ?: break
-                        try {
-                            val ollamaResponse = json.decodeFromString<OllamaResponse>(line)
-                            write("event: ${if (ollamaResponse.done) "done" else "message"}\n")
-                            write("data: ${ollamaResponse.response}\n\n")
-                            flush()
-                        } catch (e: Exception) {
-                            logger.error("Error parsing streaming response", e)
+                    try {
+                        val response = client.post("http://localhost:11434/api/generate") {
+                            contentType(ContentType.Application.Json)
+                            setBody(json.encodeToString(OllamaRequest.serializer(), ollamaRequest))
                         }
+
+                        val responseChannel = response.bodyAsChannel()
+                        var isFirstChunk = true
+
+                        while (!responseChannel.isClosedForRead) {
+                            val line = responseChannel.readUTF8Line() ?: break
+                            try {
+                                val ollamaResponse = json.decodeFromString<OllamaResponse>(line)
+
+                                // Send data event
+                                if (isFirstChunk) {
+                                    write("event: connected\ndata: SSE connection established\n\n")
+                                    isFirstChunk = false
+                                }
+
+                                write("event: ${if (ollamaResponse.done) "done" else "message"}\n")
+                                write("data: ${ollamaResponse.response}\n\n")
+                                flush()
+
+                                if (ollamaResponse.done) {
+                                    break
+                                }
+                            } catch (e: Exception) {
+                                logger.error("Error parsing streaming response", e)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        logger.error("Error in streaming", e)
+                        write("event: error\ndata: ${e.message}\n\n")
+                    } finally {
+                        write("event: done\ndata: Stream complete\n\n")
+                        flush()
                     }
                 }
             } catch (e: Exception) {
