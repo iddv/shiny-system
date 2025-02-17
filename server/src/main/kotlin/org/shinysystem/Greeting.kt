@@ -1,4 +1,4 @@
-package org.socialspaces
+package org.shinysystem
 
 class Greeting {
     private val platform = getPlatform()

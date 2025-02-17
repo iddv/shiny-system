@@ -1,4 +1,4 @@
-package org.socialspaces
+package org.shinysystem
 
 class JVMPlatform {
     val name: String = "Java ${System.getProperty("java.version")}"

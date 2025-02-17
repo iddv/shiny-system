@@ -5,10 +5,10 @@ plugins {
     application
 }
 
-group = "org.socialspaces"
+group = "org.shinysystem"
 version = "1.0.0"
 application {
-    mainClass.set("org.socialspaces.ApplicationKt")
+    mainClass.set("org.shinysystem.ApplicationKt")
     applicationDefaultJvmArgs = listOf("-Dio.ktor.development=${extra["io.ktor.development"] ?: "false"}")
 }
 

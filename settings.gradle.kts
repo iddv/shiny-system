@@ -1,4 +1,4 @@
-rootProject.name = "SocialSpaces"
+rootProject.name = "ShinySystem"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {
