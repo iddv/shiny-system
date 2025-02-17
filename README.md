@@ -1,4 +1,3 @@
-```markdown
 # Interactive Adventure Game Backend
 
 A Kotlin-based backend service built with Ktor and Ollama for AI-powered interactive text adventures. This service manages session handling, dynamic narrative generation (both standard and streaming via SSE), and even serves dynamic SVG placeholders for design purposes.
@@ -269,4 +268,3 @@ This backend is designed to work seamlessly with our React-based frontend:
 ---
 
 Happy adventuring!
-```
